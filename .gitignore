@@ -97,3 +97,5 @@ node_modules
 *.ear
 *.zip
 *.tar.gz
+
+webapps/demo2-0.0.1-SNAPSHOT/
