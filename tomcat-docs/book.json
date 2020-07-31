@@ -17,8 +17,7 @@
     "expandable-chapters",
     "back-to-top-button",
     "code",
-    "uml",
-    "page-treeview"
+    "uml"
   ],
   "pluginsConfig": {
     "tbfed-pagefooter": {
