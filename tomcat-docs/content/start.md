@@ -123,15 +123,356 @@ public void startInternal() throws Exception {
 
 ### jvisualvm查看tomcat启动后的线程
 
-* 默认的一个Acceptor线程
-* 2个Poller线程
+* 默认1个Acceptor线程
+* 默认2个Poller线程
 
 ![](../imgs/debug-4.png)
 
-
 同时看到了10个`http-nio-8080-exex-`线程,这是由于EndPoint默认设置的了`private int minSpareThreads = 10;`
 
-#### 自己设置线程池
+#### Acceptor线程
+
+* 自定义类`LimitLatch`实现了AQS,请求连接过来会先会判断最大连接数
+
+```java
+//if we have reached max connections, wait
+countUpOrAwaitConnection();
+```
+
+* NIOEndpoint中accept一个`SocketChannel`后会复用或构造一个`NioChannel`交给poller线程处理
+
+```java 
+protected class Acceptor extends AbstractEndpoint.Acceptor {
+
+    @Override
+    public void run() {
+    
+       int errorDelay = 0;
+    
+       // Loop until we receive a shutdown command
+       while (running) {
+    
+           // Loop if endpoint is paused
+           while (paused && running) {
+               state = AcceptorState.PAUSED;
+               try {
+                   Thread.sleep(50);
+               } catch (InterruptedException e) {
+                   // Ignore
+               }
+           }
+    
+           if (!running) {
+               break;
+           }
+           state = AcceptorState.RUNNING;
+    
+           try {
+               //if we have reached max connections, wait
+               countUpOrAwaitConnection();
+    
+               SocketChannel socket = null;
+               try {
+                   // Accept the next incoming connection from the server
+                   // socket
+                   socket = serverSock.accept();
+               } catch (IOException ioe) {
+                   // We didn't get a socket
+                   countDownConnection();
+                   if (running) {
+                       // Introduce delay if necessary
+                       errorDelay = handleExceptionWithDelay(errorDelay);
+                       // re-throw
+                       throw ioe;
+                   } else {
+                       break;
+                   }
+               }
+               // Successful accept, reset the error delay
+               errorDelay = 0;
+    
+               // Configure the socket
+               if (running && !paused) {
+                   // setSocketOptions() will hand the socket off to
+                   // an appropriate processor if successful
+                   if (!setSocketOptions(socket)) {
+                       closeSocket(socket);
+                   }
+               } else {
+                   closeSocket(socket);
+               }
+           } catch (Throwable t) {
+               ExceptionUtils.handleThrowable(t);
+               log.error(sm.getString("endpoint.accept.fail"), t);
+           }
+       }
+       state = AcceptorState.ENDED;
+    }
+```
+
+#### Poller线程
+
+Poller线程主要用于以较少的资源轮询已连接套接字以保持连接，当数据可用时转给工作线程
+
+* 如下注册`NioChannel`到Poller事件同步队列中`SynchronizedQueue<PollerEvent> events`
+
+```java
+ /**
+ * Registers a newly created socket with the poller.
+ *
+ * @param socket    The newly created socket
+ */
+public void register(final NioChannel socket) {
+    socket.setPoller(this);
+    NioSocketWrapper ka = new NioSocketWrapper(socket, NioEndpoint.this);
+    socket.setSocketWrapper(ka);
+    ka.setPoller(this);
+    ka.setReadTimeout(getSocketProperties().getSoTimeout());
+    ka.setWriteTimeout(getSocketProperties().getSoTimeout());
+    ka.setKeepAliveLeft(NioEndpoint.this.getMaxKeepAliveRequests());
+    ka.setReadTimeout(getConnectionTimeout());
+    ka.setWriteTimeout(getConnectionTimeout());
+    PollerEvent r = eventCache.pop();
+    ka.interestOps(SelectionKey.OP_READ);//this is what OP_REGISTER turns into.
+    if ( r==null) r = new PollerEvent(socket,ka,OP_REGISTER);
+    else r.reset(socket,ka,OP_REGISTER);
+    addEvent(r);
+}
+```
+
+* Poller线程的run方法,把客户端Socket以事件的方式交给Tomcat工作线程池
+
+采用`Selector`得到`Set<SelectionKey>`,并遍历交给`processKey`方法去真正处理对应的`SelectionKey`
+
+```java
+ /**
+ * The background thread that adds sockets to the Poller, checks the
+ * poller for triggered events and hands the associated socket off to an
+ * appropriate processor as events occur.
+ */
+@Override
+public void run() {
+    // Loop until destroy() is called
+    while (true) {
+
+        boolean hasEvents = false;
+
+        try {
+            if (!close) {
+                hasEvents = events();
+                if (wakeupCounter.getAndSet(-1) > 0) {
+                    //if we are here, means we have other stuff to do
+                    //do a non blocking select
+                    keyCount = selector.selectNow();
+                } else {
+                    keyCount = selector.select(selectorTimeout);
+                }
+                wakeupCounter.set(0);
+            }
+            if (close) {
+                events();
+                timeout(0, false);
+                try {
+                    selector.close();
+                } catch (IOException ioe) {
+                    log.error(sm.getString("endpoint.nio.selectorCloseFail"), ioe);
+                }
+                break;
+            }
+        } catch (Throwable x) {
+            ExceptionUtils.handleThrowable(x);
+            log.error("",x);
+            continue;
+        }
+        //either we timed out or we woke up, process events first
+        if ( keyCount == 0 ) hasEvents = (hasEvents | events());
+
+        Iterator<SelectionKey> iterator =
+            keyCount > 0 ? selector.selectedKeys().iterator() : null;
+        // Walk through the collection of ready keys and dispatch
+        // any active event.
+        while (iterator != null && iterator.hasNext()) {
+            SelectionKey sk = iterator.next();
+            NioSocketWrapper attachment = (NioSocketWrapper)sk.attachment();
+            // Attachment may be null if another thread has called
+            // cancelledKey()
+            if (attachment == null) {
+                iterator.remove();
+            } else {
+                iterator.remove();
+                processKey(sk, attachment);
+            }
+        }//while
+
+        //process timeouts
+        timeout(keyCount,hasEvents);
+    }//while
+
+    getStopLatch().countDown();
+}
+
+protected void processKey(SelectionKey sk, NioSocketWrapper attachment) {
+    try {
+        if ( close ) {
+            cancelledKey(sk);
+        } else if ( sk.isValid() && attachment != null ) {
+            if (sk.isReadable() || sk.isWritable() ) {
+                if ( attachment.getSendfileData() != null ) {
+                    processSendfile(sk,attachment, false);
+                } else {
+                    unreg(sk, attachment, sk.readyOps());
+                    boolean closeSocket = false;
+                    // Read goes before write
+                    if (sk.isReadable()) {
+                        if (!processSocket(attachment, SocketEvent.OPEN_READ, true)) {
+                            closeSocket = true;
+                        }
+                    }
+                    if (!closeSocket && sk.isWritable()) {
+                        if (!processSocket(attachment, SocketEvent.OPEN_WRITE, true)) {
+                            closeSocket = true;
+                        }
+                    }
+                    if (closeSocket) {
+                        cancelledKey(sk);
+                    }
+                }
+            }
+        } else {
+            //invalid key
+            cancelledKey(sk);
+        }
+    } catch ( CancelledKeyException ckx ) {
+        cancelledKey(sk);
+    } catch (Throwable t) {
+        ExceptionUtils.handleThrowable(t);
+        log.error("",t);
+    }
+}
+```
+
+* dispatch为true，交给工作线程池去处理读写事件
+
+```java
+if (sk.isReadable()) {
+    if (!processSocket(attachment, SocketEvent.OPEN_READ, true)) {
+        closeSocket = true;
+    }
+}
+if (!closeSocket && sk.isWritable()) {
+    if (!processSocket(attachment, SocketEvent.OPEN_WRITE, true)) {
+        closeSocket = true;
+    }
+}
+```
+
+#### Tomcat工作线程池会处理客户端Socket的读写事件
+
+```java
+ /**
+ * Process the given SocketWrapper with the given status. Used to trigger
+ * processing as if the Poller (for those endpoints that have one)
+ * selected the socket.
+ *
+ * @param socketWrapper The socket wrapper to process
+ * @param event         The socket event to be processed
+ * @param dispatch      Should the processing be performed on a new
+ *                          container thread
+ *
+ * @return if processing was triggered successfully
+ */
+public boolean processSocket(SocketWrapperBase<S> socketWrapper,
+        SocketEvent event, boolean dispatch) {
+    try {
+        if (socketWrapper == null) {
+            return false;
+        }
+        SocketProcessorBase<S> sc = processorCache.pop();
+        if (sc == null) {
+            sc = createSocketProcessor(socketWrapper, event);
+        } else {
+            sc.reset(socketWrapper, event);
+        }
+        Executor executor = getExecutor();
+        if (dispatch && executor != null) {
+            executor.execute(sc);
+        } else {
+            sc.run();
+        }
+    } catch (RejectedExecutionException ree) {
+        getLog().warn(sm.getString("endpoint.executor.fail", socketWrapper) , ree);
+        return false;
+    } catch (Throwable t) {
+        ExceptionUtils.handleThrowable(t);
+        // This means we got an OOM or similar creating a thread, or that
+        // the pool and its queue are full
+        getLog().error(sm.getString("endpoint.process.fail"), t);
+        return false;
+    }
+    return true;
+}
+```
+
+##### NioEndpoint的线程池
+
+* JDk提供自带的`ThreadPoolExecutor`
+* 队列使用了`LinkedBlockingQueue<Runnable>`（线程安全的阻塞队列）
+* 采用默认的`RejectHandler`拒绝策略
+* 线程工厂使用`TaskThreadFactory`
+
+```java
+public void createExecutor() {
+    internalExecutor = true;
+    TaskQueue taskqueue = new TaskQueue();
+    TaskThreadFactory tf = new TaskThreadFactory(getName() + "-exec-", daemon, getThreadPriority());
+    executor = new ThreadPoolExecutor(getMinSpareThreads(), getMaxThreads(), 60, TimeUnit.SECONDS,taskqueue, tf);
+    taskqueue.setParent( (ThreadPoolExecutor) executor);
+}
+```
+
+* 关于线程池构造的线程名字
+
+可以在tomcat配置文件中配置`namePrefix`，或者是程序默认如下(例如nio的:`http-nio-8080`)
+
+```java
+AbstractProtocol 类的 getName 方法
+
+/**
+ * The name will be prefix-address-port if address is non-null and
+ * prefix-port if the address is null.
+ *
+ * @return A name for this protocol instance that is appropriately quoted
+ *         for use in an ObjectName.
+ */
+public String getName() {
+    return ObjectName.quote(getNameInternal());
+}
+
+private String getNameInternal() {
+    StringBuilder name = new StringBuilder(getNamePrefix());
+    name.append('-');
+    if (getAddress() != null) {
+        name.append(getAddress().getHostAddress());
+        name.append('-');
+    }
+    int port = getPort();
+    if (port == 0) {
+        // Auto binding is in use. Check if port is known
+        name.append("auto-");
+        name.append(getNameIndex());
+        port = getLocalPort();
+        if (port != -1) {
+            name.append('-');
+            name.append(port);
+        }
+    } else {
+        name.append(port);
+    }
+    return name.toString();
+}
+```
+
+### 自己设置Tomcat的线程池
 
 ```java
 <Executor name="tomcatThreadPool" namePrefix="catalina-exec-"
