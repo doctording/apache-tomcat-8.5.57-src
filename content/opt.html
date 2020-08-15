@@ -4,7 +4,7 @@
     <head>
         <meta charset="UTF-8">
         <meta content="text/html; charset=utf-8" http-equiv="Content-Type">
-        <title>4 tomcat加载web项目和处理请求流程 · spring-note</title>
+        <title>5 tomcat性能调优 · spring-note</title>
         <meta http-equiv="X-UA-Compatible" content="IE=edge" />
         <meta name="description" content="">
         <meta name="generator" content="GitBook 3.2.3">
@@ -89,10 +89,8 @@
     <link rel="shortcut icon" href="../gitbook/images/favicon.ico" type="image/x-icon">
 
     
-    <link rel="next" href="opt.html" />
     
-    
-    <link rel="prev" href="start.html" />
+    <link rel="prev" href="init.html" />
     
 
     </head>
@@ -173,7 +171,7 @@
             
         </li>
     
-        <li class="chapter active" data-level="1.5" data-path="init.html">
+        <li class="chapter " data-level="1.5" data-path="init.html">
             
                 <a href="init.html">
             
@@ -186,7 +184,7 @@
             
         </li>
     
-        <li class="chapter " data-level="1.6" data-path="opt.html">
+        <li class="chapter active" data-level="1.6" data-path="opt.html">
             
                 <a href="opt.html">
             
@@ -229,7 +227,7 @@
     <!-- Title -->
     <h1>
         <i class="fa fa-circle-o-notch fa-spin"></i>
-        <a href=".." >4 tomcat加载web项目和处理请求流程</a>
+        <a href=".." >5 tomcat性能调优</a>
     </h1>
 </div>
 
@@ -244,48 +242,9 @@
     
                                 <section class="normal markdown-section">
                                 
-                                <div class="treeview__container"><div class="treeview__container-title"><span class="treeview__main-title">Treeview</span><span class="treeview__copyright">Copyright @doctording all right reserved, powered by <a href="https://github.com/aleen42" target="_blank">aleen42</a></span></div><ul>
-<li><div><a href="#tomcat&#x52A0;&#x8F7D;web&#x9879;&#x76EE;&#x548C;&#x5904;&#x7406;&#x8BF7;&#x6C42;&#x6D41;&#x7A0B;">Tomcat&#x52A0;&#x8F7D;web&#x9879;&#x76EE;&#x548C;&#x5904;&#x7406;&#x8BF7;&#x6C42;&#x6D41;&#x7A0B;</a><i class="level__parent level__item level__parent--opened" state="opened" onclick="var curState = this.getAttribute(&apos;state&apos;);var nextState = curState === &apos;opened&apos; ? &apos;hidden&apos; : &apos;opened&apos;;this.setAttribute(&apos;state&apos;, nextState);this.className = this.className.split(curState).join(nextState);var list = this.parentNode.nextElementSibling;if (nextState === &apos;hidden&apos;) {    list.style.display = &apos;none&apos;;} else {    list.style.display = &apos;block&apos;;}"></i></div>
-<ul>
-<li><div><a href="#&#x8DDF;&#x8E2A;&#x8BF7;&#x6C42;&#x5904;&#x7406;&#x6D41;&#x7A0B;">&#x8DDF;&#x8E2A;&#x8BF7;&#x6C42;&#x5904;&#x7406;&#x6D41;&#x7A0B;</a><i></i></div></li>
-</ul></li>
-</ul>
-</div>
-
-<h1 id="tomcat&#x52A0;&#x8F7D;web&#x9879;&#x76EE;&#x548C;&#x5904;&#x7406;&#x8BF7;&#x6C42;&#x6D41;&#x7A0B;">Tomcat&#x52A0;&#x8F7D;web&#x9879;&#x76EE;&#x548C;&#x5904;&#x7406;&#x8BF7;&#x6C42;&#x6D41;&#x7A0B;</h1>
-<h2 id="&#x8DDF;&#x8E2A;&#x8BF7;&#x6C42;&#x5904;&#x7406;&#x6D41;&#x7A0B;">&#x8DDF;&#x8E2A;&#x8BF7;&#x6C42;&#x5904;&#x7406;&#x6D41;&#x7A0B;</h2>
-<p>&#x76F4;&#x63A5;&#x65AD;&#x70B9;&#x6253;&#x5230;Acceptor&#x7684;<code>processKey</code>&#x65B9;&#x6CD5;</p>
-<ul>
-<li>&#x6D4F;&#x89C8;&#x5668;&#x53D1;&#x8D77;&#x8BF7;&#x6C42;</li>
-</ul>
-<p><img src="../imgs/request-1.png" alt=""></p>
-<ul>
-<li>&#x5904;&#x7406;&#x8BFB;&#x8BF7;&#x6C42;</li>
-</ul>
-<p><img src="../imgs/request-2.png" alt=""></p>
-<p><img src="../imgs/request-3.png" alt=""></p>
-<ul>
-<li>&#x8BF7;&#x6C42;&#x53D1;&#x5230;Servlet&#x5BB9;&#x5668;&#x7684;service&#x65B9;&#x6CD5;,&#x6240;&#x4EE5;&#x76F4;&#x63A5;HttpServlet service&#x65B9;&#x6CD5;&#x65AD;&#x70B9;</li>
-</ul>
-<p><img src="../imgs/request-4.png" alt=""></p>
-<p><img src="../imgs/request-5.png" alt=""></p>
-<ul>
-<li>&#x8BF7;&#x6C42;&#x6808;&#xFF08;&#x8D23;&#x4EFB;&#x94FE;&#x6A21;&#x5F0F;&#xFF09;</li>
-</ul>
-<p><img src="../imgs/request-6.png" alt=""></p>
-<ol>
-<li>&#x8BF7;&#x6C42;&#x901A;&#x8FC7;&#x7EBF;&#x7A0B;&#x6C60;&#x53BB;&#x6267;&#x884C;&#xFF0C;&#x5177;&#x4F53;&#x662F;NioEndPoint&#x7684;doRun&#x65B9;&#x6CD5;</li>
-<li>&#x4F1A;&#x5C01;&#x88C5;SocketWrapperBase,&#x8F6C;&#x53D1;&#x5230;Http11Processor&#x5904;&#x7406;</li>
-<li>&#x7136;&#x540E;&#x518D;&#x4EA4;&#x7ED9;Standard&#x7684;<code>Engine</code>&#xFF08;Engine&#x662F;&#x4E00;&#x4E2A;Servlet&#x5BB9;&#x5668;&#xFF09;&#x5904;&#x7406;</li>
-<li>Engine&#x4E4B;&#x540E;&#x53EF;&#x4EE5;&#x770B;&#x5230;&#x6709;Standard&#x7684;<code>Host</code>,<code>Context</code>,<code>Wrapper</code>&#x7B49;&#x5904;&#x7406;&#xFF0C;&#x4E2D;&#x95F4;&#x6709;&#x5404;&#x79CD;Filter&#x64CD;&#x4F5C;&#xFF0C;&#x6700;&#x540E;&#x662F;<code>Servlet</code></li>
-<li><p>Servlet&#x5BB9;&#x5668;&#x7684;HttpServlet&#x7C7B;&#x7684;service&#x65B9;&#x6CD5;&#x5F97;&#x5230;&#x4E86;&#x5177;&#x4F53;&#x7684;HttpRequest&#x8BF7;&#x6C42;</p>
-</li>
-<li><p>&#x8BF7;&#x6C42;&#x5904;&#x7406;&#x548C;&#x8FD4;&#x56DE;</p>
-</li>
-</ol>
-<p><img src="../imgs/request-7.png" alt=""></p>
+                                <h1 id="tomcat&#x6027;&#x80FD;&#x8C03;&#x4F18;">tomcat&#x6027;&#x80FD;&#x8C03;&#x4F18;</h1>
 <footer class="page-footer"><span class="copyright">Copyright @doctording all right reserved&#xFF0C;powered by Gitbook</span><span class="footer-modification">&#x8BE5;&#x6587;&#x4EF6;&#x4FEE;&#x6539;&#x65F6;&#x95F4;&#xFF1A;
-2020-08-01 18:45:54
+2020-08-14 08:46:51
 </span></footer>
                                 
                                 </section>
@@ -313,14 +272,10 @@
 
             
                 
-                <a href="start.html" class="navigation navigation-prev " aria-label="Previous page: 3 tomcat源码启动流程">
+                <a href="init.html" class="navigation navigation-prev navigation-unique" aria-label="Previous page: 4 tomcat加载web项目和处理请求流程">
                     <i class="fa fa-angle-left"></i>
                 </a>
                 
-                
-                <a href="opt.html" class="navigation navigation-next " aria-label="Next page: 5 tomcat性能调优">
-                    <i class="fa fa-angle-right"></i>
-                </a>
                 
             
         
@@ -329,7 +284,7 @@
     <script>
         var gitbook = gitbook || [];
         gitbook.push(function() {
-            gitbook.page.hasChanged({"page":{"title":"4 tomcat加载web项目和处理请求流程","level":"1.5","depth":1,"next":{"title":"5 tomcat性能调优","level":"1.6","depth":1,"path":"content/opt.md","ref":"./content/opt.md","articles":[]},"previous":{"title":"3 tomcat源码启动流程","level":"1.4","depth":1,"path":"content/start.md","ref":"./content/start.md","articles":[]},"dir":"ltr"},"config":{"plugins":["prism","-highlight","-lunr","-search","-sharing","ace","codeblock-filename","search-plus","sectionx","splitter","tbfed-pagefooter","expandable-chapters","back-to-top-button","code","uml","page-treeview"],"styles":{"website":"styles/website.css"},"pluginsConfig":{"tbfed-pagefooter":{"copyright":"Copyright @doctording","modify_label":"该文件修改时间：","modify_format":"YYYY-MM-DD HH:mm:ss"},"page-treeview":{"collapsed":false,"copyright":"Copyright @doctording","minHeaderCount":"2","minHeaderDeep":"2"},"prism":{},"ace":{},"splitter":{},"code":{"copyButtons":true},"fontsettings":{"theme":"white","family":"sans","size":2},"sectionx":{},"uml":{"format":"svg"},"codeblock-filename":{},"back-to-top-button":{},"theme-default":{"styles":{"website":"styles/website.css","pdf":"styles/pdf.css","epub":"styles/epub.css","mobi":"styles/mobi.css","ebook":"styles/ebook.css","print":"styles/print.css"},"showLevel":false},"expandable-chapters":{},"search-plus":{}},"theme":"default","author":"doctording","pdf":{"pageNumbers":true,"fontSize":12,"fontFamily":"Arial","paperSize":"a4","chapterMark":"pagebreak","pageBreaksBefore":"/","margin":{"right":62,"left":62,"top":56,"bottom":56}},"structure":{"langs":"LANGS.md","readme":"README.md","glossary":"GLOSSARY.md","summary":"SUMMARY.md"},"variables":{},"title":"spring-note","language":"zh-hans","gitbook":"*","description":"Java开发"},"file":{"path":"content/init.md","mtime":"2020-08-01T10:45:54.123Z","type":"markdown"},"gitbook":{"version":"3.2.3","time":"2020-08-15T03:22:10.704Z"},"basePath":"..","book":{"language":""}});
+            gitbook.page.hasChanged({"page":{"title":"5 tomcat性能调优","level":"1.6","depth":1,"previous":{"title":"4 tomcat加载web项目和处理请求流程","level":"1.5","depth":1,"path":"content/init.md","ref":"./content/init.md","articles":[]},"dir":"ltr"},"config":{"plugins":["prism","-highlight","-lunr","-search","-sharing","ace","codeblock-filename","search-plus","sectionx","splitter","tbfed-pagefooter","expandable-chapters","back-to-top-button","code","uml","page-treeview"],"styles":{"website":"styles/website.css"},"pluginsConfig":{"tbfed-pagefooter":{"copyright":"Copyright @doctording","modify_label":"该文件修改时间：","modify_format":"YYYY-MM-DD HH:mm:ss"},"page-treeview":{"collapsed":false,"copyright":"Copyright @doctording","minHeaderCount":"2","minHeaderDeep":"2"},"prism":{},"ace":{},"splitter":{},"code":{"copyButtons":true},"fontsettings":{"theme":"white","family":"sans","size":2},"sectionx":{},"uml":{"format":"svg"},"codeblock-filename":{},"back-to-top-button":{},"theme-default":{"styles":{"website":"styles/website.css","pdf":"styles/pdf.css","epub":"styles/epub.css","mobi":"styles/mobi.css","ebook":"styles/ebook.css","print":"styles/print.css"},"showLevel":false},"expandable-chapters":{},"search-plus":{}},"theme":"default","author":"doctording","pdf":{"pageNumbers":true,"fontSize":12,"fontFamily":"Arial","paperSize":"a4","chapterMark":"pagebreak","pageBreaksBefore":"/","margin":{"right":62,"left":62,"top":56,"bottom":56}},"structure":{"langs":"LANGS.md","readme":"README.md","glossary":"GLOSSARY.md","summary":"SUMMARY.md"},"variables":{},"title":"spring-note","language":"zh-hans","gitbook":"*","description":"Java开发"},"file":{"path":"content/opt.md","mtime":"2020-08-14T00:46:51.805Z","type":"markdown"},"gitbook":{"version":"3.2.3","time":"2020-08-15T03:22:10.704Z"},"basePath":"..","book":{"language":""}});
         });
     </script>
 </div>
